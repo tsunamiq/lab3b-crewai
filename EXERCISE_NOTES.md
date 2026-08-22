@@ -8,7 +8,7 @@ only code, each cell headed by an `EXERCISE n` banner comment.
 |---|---|
 | 1. Fact-checker agent | notebook, 2 cells (build + check) |
 | 2. `output_pydantic` | notebook, 3 cells (schema + crew + check) |
-| 3. `Process.hierarchical` | deferred — sketch below |
+| 3. `Process.hierarchical` | notebook, 2 cells (arms + measurement) |
 | 4. Prove memory works | notebook, 2 cells (arms + measurement) |
 | 5. Compare to Lab 03A | **this file**, below |
 
@@ -121,18 +121,54 @@ claims. That is the argument for `output_pydantic`, stated as code rather than a
 
 ---
 
-## Exercise 3 — deferred
+## Exercise 3 — `Process.hierarchical`, priced against sequential
 
-Not attempted. Recorded so the decision is not re-derived later.
+### The trap
 
-A hierarchical crew needs `manager_llm` **or** `manager_agent` (never both), the manager must not
-appear in `agents=`, and delegating agents need `allow_delegation=True`.
+A hierarchical crew needs `manager_llm` **or** `manager_agent` (never both), and the manager must
+not appear in `agents=`. But the subtler trap is the tasks: if they keep their explicit
+`context=[...]` wiring, the manager has nothing left to decide, and the run is a sequential run
+with a much larger token bill.
 
-The trap is subtler: if the tasks keep their explicit `context=[...]` wiring, the manager has
-nothing left to decide, and a hierarchical run is just a sequential run with a much larger token
-bill. Showing anything real means building **fresh tasks with no `context=`** and letting the
-manager's delegation *be* the wiring — then comparing `crew.usage_metrics` against the sequential
-baseline to price what that autonomy costs.
+So **both arms use the same three context-free task descriptions**, and differ only in who does
+the wiring:
+
+| | `sequential` | `hierarchical` |
+|---|---|---|
+| `agent=` | hard-wired by us | left unset — the manager assigns |
+| handoff | CrewAI passes the previous task's output forward | the manager is the only carrier |
+
+Note that the sequential arm is *not* unwired: with no `context=`, `Process.sequential` still
+hands each task its predecessor's output automatically. The comparison is therefore
+manager-routing vs. built-in chaining, not routing vs. nothing.
+
+### Why one run per arm is enough
+
+The load-bearing numbers — `total_tokens` and `successful_requests` from `crew.usage_metrics` —
+are **structural, not sampled**. Hierarchical mode inserts manager turns whatever the model
+happens to say, so the call count and token bill are properties of the topology; rerunning does
+not average them away. This is the opposite of Exercise 4, where the measured quantity was
+semantic recall and a single sample proved almost nothing.
+
+Wall clock and specifics-propagation *are* sampled. Both are printed, neither drives the verdict.
+
+### What the check cell measures
+
+1. **Price of autonomy** — hierarchical ÷ sequential `total_tokens` for identical work.
+2. **Manager overhead** — extra `successful_requests`, i.e. the manager's own turns.
+3. **Routing fidelity** — `task.output.agent` per task vs. the assignment we would have
+   hand-wired. The interesting outcome is 3/3: the manager spends multiples of the tokens to
+   rediscover a wiring that was already known. That is the finding, not a failure — hierarchical
+   mode earns its bill only when the routing is *not* known up front (task count unknown, agent
+   chosen by intermediate results, work rejected and retried).
+4. **Propagation** — specifics from the brief surviving into the final report, per arm. Uses the
+   same named-system-or-figure measure as Exercise 4's `entities()`; the definition is repeated
+   locally because Exercise 4's cell runs later. Its known limitation is inherited: a plain
+   capitalised name with no internal capital, hyphen or digit (`Copilot`, `Devin`) is not counted,
+   because admitting those would also admit every sentence-initial word.
+
+Outputs land in `outputs/exercise3-sequential/` and `outputs/exercise3-hierarchical/` for a
+side-by-side read of the disagreeing task.
 
 ---
 
